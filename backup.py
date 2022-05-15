@@ -58,8 +58,7 @@ def main(input, output):
                 dry_run = args.dry_run,
                 logger=logger
             )
-            if Path(base_name + ".tar.gz").exists():
-                shutil.move(src=base_name + ".tar.gz", dst=args.output)
+            shutil.move(src=base_name + ".tar.gz", dst=args.output)
     
 
 if __name__ == "__main__":
