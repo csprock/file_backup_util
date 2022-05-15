@@ -4,6 +4,7 @@ from re import L
 import shutil
 import logging
 from pathlib import Path
+from datetime import datetime
 
 
 logger = logging.getLogger(__name__)
@@ -14,6 +15,7 @@ logger.addHandler(handler)
 parser = argparse.ArgumentParser(description="Compress contents of a directory")
 parser.add_argument("--input")
 parser.add_argument("--output")
+parser.add_argument("--suffix", default=datetime.now().isoformat())
 parser.add_argument("--exclude_hidden", action="store_true", default=False)
 parser.add_argument("--dry-run", action="store_true", default=False)
 
@@ -48,15 +50,16 @@ def main(input, output):
         logger.info(dir)
 
         if not dir.match(".*"):
+            base_name = dir.name + "_" + args.suffix
             shutil.make_archive(
-                base_name = dir.name,
+                base_name = base_name,
                 root_dir = dir.name,
                 format='gztar',
                 dry_run = args.dry_run,
                 logger=logger
             )
-            if Path(dir.name + ".tar.gz").exists():
-                shutil.move(src=dir.name + ".tar.gz", dst=args.output)
+            if Path(base_name + ".tar.gz").exists():
+                shutil.move(src=base_name + ".tar.gz", dst=args.output)
     
 
 if __name__ == "__main__":
