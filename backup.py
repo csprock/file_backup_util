@@ -21,15 +21,12 @@ args = parser.parse_args()
 config = ConfigParser()
 config.read(args.config)
 
+root = Path(args.config).parent
+
 try:
     config['Options']['suffix']
 except KeyError:
     config['Options']['suffix'] = default=datetime.now().isoformat()
-
-def parse_list(text_list):
-    file_list = text_list.replace('[', '').replace(']', '').split()
-    file_list = [f.strip() for f in file_list]
-    return file_list
 
 def _bool(value):
     if value == 'True':
@@ -39,33 +36,24 @@ def _bool(value):
     else:
         raise TypeError(f"value must be str True or False, found {value} instead")
 
-def list_directories(path):
-    if bool(config['Options']['exclude_hidden']):
-        logger.info("Excluding hidden files")
-        return [Path(x) for x in Path(path).iterdir() if x.is_dir() and not x.match(".*")]
-    else: 
-        return [Path(x) for x in Path(path).iterdir() if x.is_dir()]
-
 logger.info(f"Dry run: {config['Options']['dry_run']}")
 
 
 def main(input):
+
     input = Path(input).resolve()
     output = Path(config['Options']['destination']).resolve()
 
-    if not output.is_dir():
-        raise FileExistsError(f"{str(output)} is not a directory.")
+    if not output.exists():
+        raise FileExistsError(f"{str(output)} does not exist.")
 
-    directories = list_directories(input)
+    for file in config['Files']:
 
-    try:
-        directories.remove(output)
-        logger.info("Destination path found in compression target, skipping")
-    except ValueError:
-        pass
+        filemode = config['Files'][file]
 
-    for dir in directories:
-        logger.info(f"Attempting to archive {dir}")
+        dir = root / Path(file)
+
+        logger.info(f"Attempting to archive {file} using {filemode}")
 
         if not dir.match(".*"):
             base_name = Path(dir.name + "_" + config['Options']['suffix']).resolve()
