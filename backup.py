@@ -16,6 +16,7 @@ LOGGER.addHandler(handler)
 
 parser = argparse.ArgumentParser(description="Compress contents of a directory")
 parser.add_argument("--config")
+parser.add_argument("--mode", default=751)
 
 args = parser.parse_args()
 
@@ -25,7 +26,7 @@ config.read(args.config)
 root = Path(args.config).parent
 
 LOGGER.info(f"Dry run: {config['Options']['dry_run']}")
-LOGGER.info(f"Backing up files in {str(root)}.")
+LOGGER.info(f"Backing up files in {str(root)} using filemode {args.mode}")
 
 try:
     config['Options']['suffix']
@@ -40,39 +41,36 @@ def _bool(value):
     else:
         raise TypeError(f"value must be str True or False, found {value} instead")
 
+EXTENTION_MAP = {
+    'gztar':'.tar.gz',
+    'zip':'.zip'
+}
 
+def main():
 
-def main(input):
-
-    input = Path(input).resolve()
-    output = (Path(config['Options']['destination'] + "_" + config['Options']['suffix'])).resolve()
-
-    
-
-    Path.mkdir(output, parents=True, exist_ok=False)
+    output = Path(config['Options']['destination']).resolve() #+ "_" + config['Options']['suffix'])).resolve()
+    output.mkdir(mode=args.mode, parents=True, exist_ok=True)
 
 
     for file in config['Files']:
 
-        filemode = config['Files'][file]
+        format = config['Files'][file]
 
-        dir = root / Path(file)
+        base_name = root / Path(file)
 
-        LOGGER.info(f"Attempting to archive {file} using {filemode}")
+        LOGGER.info(f"Attempting to archive {file} using {format}")
+        LOGGER.info(f"Saving archive as {base_name}")
 
-        if not dir.match(".*"):
-            base_name = Path(dir.name).resolve()
-            LOGGER.info(f"Saving archive as {base_name}")
-            shutil.make_archive(
-                base_name = base_name.name,
-                root_dir = dir.name,
-                format='gztar',
-                dry_run = _bool(config['Options']['dry_run']),
-                logger=LOGGER
-            )
-            if not _bool(config['Options']['dry_run']):
-                shutil.move(src=base_name.name + ".tar.gz", dst=output)
+        shutil.make_archive(
+            base_name = str(base_name),
+            root_dir = str(base_name),
+            format=format,
+            dry_run = _bool(config['Options']['dry_run']),
+            logger=LOGGER
+        )
+        if not _bool(config['Options']['dry_run']):
+            shutil.copy(src=str(base_name) + EXTENTION_MAP[format], dst=output)
     
 
 if __name__ == "__main__":
-    main(Path.cwd())
+    main()
