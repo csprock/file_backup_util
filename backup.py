@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import argparse
+from genericpath import exists
 from re import L
 import shutil
 import logging
@@ -8,10 +9,10 @@ from datetime import datetime
 from configparser import ConfigParser
 
 
-logger = logging.getLogger(__name__)
-logger.setLevel(level=logging.DEBUG)
+LOGGER = logging.getLogger(__name__)
+LOGGER.setLevel(level=logging.DEBUG)
 handler = logging.StreamHandler()
-logger.addHandler(handler)
+LOGGER.addHandler(handler)
 
 parser = argparse.ArgumentParser(description="Compress contents of a directory")
 parser.add_argument("--config")
@@ -22,6 +23,9 @@ config = ConfigParser()
 config.read(args.config)
 
 root = Path(args.config).parent
+
+LOGGER.info(f"Dry run: {config['Options']['dry_run']}")
+LOGGER.info(f"Backing up files in {str(root)}.")
 
 try:
     config['Options']['suffix']
@@ -36,16 +40,17 @@ def _bool(value):
     else:
         raise TypeError(f"value must be str True or False, found {value} instead")
 
-logger.info(f"Dry run: {config['Options']['dry_run']}")
 
 
 def main(input):
 
     input = Path(input).resolve()
-    output = Path(config['Options']['destination']).resolve()
+    output = (Path(config['Options']['destination'] + "_" + config['Options']['suffix'])).resolve()
 
-    if not output.exists():
-        raise FileExistsError(f"{str(output)} does not exist.")
+    
+
+    Path.mkdir(output, parents=True, exist_ok=False)
+
 
     for file in config['Files']:
 
@@ -53,17 +58,17 @@ def main(input):
 
         dir = root / Path(file)
 
-        logger.info(f"Attempting to archive {file} using {filemode}")
+        LOGGER.info(f"Attempting to archive {file} using {filemode}")
 
         if not dir.match(".*"):
-            base_name = Path(dir.name + "_" + config['Options']['suffix']).resolve()
-            logger.info(f"Saving archive as {base_name}")
+            base_name = Path(dir.name).resolve()
+            LOGGER.info(f"Saving archive as {base_name}")
             shutil.make_archive(
                 base_name = base_name.name,
                 root_dir = dir.name,
                 format='gztar',
                 dry_run = _bool(config['Options']['dry_run']),
-                logger=logger
+                logger=LOGGER
             )
             if not _bool(config['Options']['dry_run']):
                 shutil.move(src=base_name.name + ".tar.gz", dst=output)
