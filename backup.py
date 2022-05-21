@@ -8,6 +8,10 @@ from pathlib import Path
 from datetime import datetime
 from configparser import ConfigParser
 
+EXTENTION_MAP = {
+    'gztar':'.tar.gz',
+    'zip':'.zip'
+}
 
 LOGGER = logging.getLogger(__name__)
 LOGGER.setLevel(level=logging.DEBUG)
@@ -28,11 +32,6 @@ root = Path(args.config).parent
 LOGGER.info(f"Dry run: {config['Options']['dry_run']}")
 LOGGER.info(f"Backing up files in {str(root)} using filemode {args.mode}")
 
-try:
-    config['Options']['suffix']
-except KeyError:
-    config['Options']['suffix'] = default=datetime.now().isoformat()
-
 def _bool(value):
     if value == 'True':
         return True
@@ -41,14 +40,17 @@ def _bool(value):
     else:
         raise TypeError(f"value must be str True or False, found {value} instead")
 
-EXTENTION_MAP = {
-    'gztar':'.tar.gz',
-    'zip':'.zip'
-}
+try:
+    config['Options']['suffix']
+except KeyError:
+    config['Options']['suffix'] = default=datetime.now().isoformat()
+
+config['Options']['dry_run'] = _bool(config['Options']['dry_run'])
+
 
 def main():
 
-    output = Path(config['Options']['destination']).resolve() #+ "_" + config['Options']['suffix'])).resolve()
+    output = Path(config['Options']['destination'] + "_" + config['Options']['suffix']).resolve()
     output.mkdir(mode=args.mode, parents=True, exist_ok=True)
 
 
@@ -58,19 +60,23 @@ def main():
 
         base_name = root / Path(file)
 
-        LOGGER.info(f"Attempting to archive {file} using {format}")
-        LOGGER.info(f"Saving archive as {base_name}")
+        if format == 'None':
+            LOGGER.warning("Non compression not implemented")
+        else:
 
-        shutil.make_archive(
-            base_name = str(base_name),
-            root_dir = str(base_name),
-            format=format,
-            dry_run = _bool(config['Options']['dry_run']),
-            logger=LOGGER
-        )
-        if not _bool(config['Options']['dry_run']):
-            shutil.copy(src=str(base_name) + EXTENTION_MAP[format], dst=output)
+            LOGGER.info(f"Attempting to archive {file} using {format}")
+            LOGGER.info(f"Saving archive as {base_name}")
+
+            shutil.make_archive(
+                base_name = str(base_name),
+                root_dir = str(base_name),
+                format=format,
+                dry_run = _bool(config['Options']['dry_run']),
+                logger=LOGGER
+            )
+            if not config['Options']['dry_run']:
+                shutil.move(src=str(base_name) + EXTENTION_MAP[format], dst=output)
+
     
-
 if __name__ == "__main__":
     main()
