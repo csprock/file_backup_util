@@ -20,17 +20,14 @@ LOGGER.addHandler(handler)
 
 parser = argparse.ArgumentParser(description="Compress contents of a directory")
 parser.add_argument("--config")
-parser.add_argument("--mode", default=751)
 
 args = parser.parse_args()
 
 config = ConfigParser()
 config.read(args.config)
 
-root = Path(args.config).parent
+src_root = Path(args.config).parent
 
-LOGGER.info(f"Dry run: {config['Options']['dry_run']}")
-LOGGER.info(f"Backing up files in {str(root)} using filemode {args.mode}")
 
 def _bool(value):
     if value == 'True':
@@ -39,43 +36,49 @@ def _bool(value):
         return False
     else:
         raise TypeError(f"value must be str True or False, found {value} instead")
-
+        
 try:
     config['Options']['suffix']
 except KeyError:
     config['Options']['suffix'] = default=datetime.now().isoformat()
 
-config['Options']['dry_run'] = _bool(config['Options']['dry_run'])
-
+LOGGER.info(f"Dry run: {(config['Options']['dry_run'])}")
 
 def main():
 
-    output = Path(config['Options']['destination'] + "_" + config['Options']['suffix']).resolve()
-    output.mkdir(mode=args.mode, parents=True, exist_ok=True)
+    dest_dir = Path(config['Options']['destination'] + "_" + config['Options']['suffix']).resolve()
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    LOGGER.info(f"Making directory {dest_dir}")
 
 
     for file in config['Files']:
 
         format = config['Files'][file]
-
-        base_name = root / Path(file)
+        src_name = src_root / Path(file)
+        LOGGER.info(f"Backing up {src_name}")
 
         if format == 'None':
-            LOGGER.warning("Non compression not implemented")
+            pass
+            dest_name = dest_dir / Path(file)
+            LOGGER.info(f"Copying {src_name} without compression to {dest_name}")
+            if not _bool(config['Options']['dry_run']):
+                d = shutil.copytree(str(src_name), str(dest_name), dirs_exist_ok=True)
+                LOGGER.info(d)
         else:
 
-            LOGGER.info(f"Attempting to archive {file} using {format}")
-            LOGGER.info(f"Saving archive as {base_name}")
+            LOGGER.info(f"Using {format} compression")
 
             shutil.make_archive(
-                base_name = str(base_name),
-                root_dir = str(base_name),
+                base_name = str(src_name),
+                root_dir = str(src_name),
                 format=format,
                 dry_run = _bool(config['Options']['dry_run']),
                 logger=LOGGER
             )
-            if not config['Options']['dry_run']:
-                shutil.move(src=str(base_name) + EXTENTION_MAP[format], dst=output)
+            if not _bool(config['Options']['dry_run']):
+                archive_name = str(src_name) + EXTENTION_MAP[format]
+                LOGGER.info(f"Attempting to move {archive_name} to {dest_dir}")
+                dest = shutil.move(src=archive_name, dst=str(dest_dir))
 
     
 if __name__ == "__main__":
