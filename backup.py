@@ -24,25 +24,35 @@ parser.add_argument("--mode", default=511)
 
 args = parser.parse_args()
 
-with open(args.config, mode='rt') as file:
-    config = yaml.safe_load(file)
 
+def load_config_file(path):
 
-src_root = Path(args.config).parent
+    with open(path, mode='rt') as file:
+        config = yaml.safe_load(file)
 
+    for file, params in config['files'].items():
+        try:
+            if params['format'] is not None:
+                assert params['format'] in EXTENTION_MAP
+        except AssertionError:
+            raise AssertionError(f"{file} has an invalid format {params['format']}")
 
-if config['options']['suffix'] is None:
-    config['options']['suffix'] = datetime.now().isoformat().replace(":", "-")
+    if config['options']['suffix'] is None:
+        config['options']['suffix'] = datetime.now().isoformat().replace(":", "-")
 
+    LOGGER.info(f"Dry run: {(config['options']['dry_run'])}")
 
-LOGGER.info(f"Dry run: {(config['options']['dry_run'])}")
+    return config
+
+config = load_config_file(args.config)
+
 
 def main():
 
+    src_root = Path(args.config).parent
     dest_dir = Path(config['options']['destination'] + "_" + config['options']['suffix']).resolve()
-    dest_dir.mkdir(mode=args.mode, parents=True, exist_ok=True)
     LOGGER.info(f"Making directory {dest_dir}")
-
+    dest_dir.mkdir(mode=args.mode, parents=True, exist_ok=True)
 
     for file, params in config['files'].items():
 
