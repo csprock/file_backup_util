@@ -69,9 +69,15 @@ def dir_size(path, exclude_hidden):
 
 
 def copy_item(src, dest_dir, exclude_hidden, dry_run, logger):
+    entry = {
+        "artifact": src.name,
+        "format": None,
+        "type": "file" if src.is_file() else "dir",
+        "restore_to": str(src.parent),
+    }
     if dry_run:
         logger.info(f"[dry-run] would copy {src} → {dest_dir / src.name}")
-        return
+        return entry
     if src.is_file():
         shutil.copy2(src, dest_dir / src.name)
         logger.info(f"Copied file {src} → {dest_dir / src.name}")
@@ -79,6 +85,7 @@ def copy_item(src, dest_dir, exclude_hidden, dry_run, logger):
         ignore = shutil.ignore_patterns(".*") if exclude_hidden else None
         shutil.copytree(src, dest_dir / src.name, ignore=ignore)
         logger.info(f"Copied directory {src} → {dest_dir / src.name}")
+    return entry
 
 
 def _archive_tar(src, output_dir, exclude_hidden, logger):
@@ -121,9 +128,15 @@ def _archive_zip(src, output_dir, exclude_hidden, logger):
 
 def make_archive_file(src, dest_dir, fmt, exclude_hidden, dry_run, logger):
     ext = ".tar.gz" if fmt == "gztar" else ".zip"
+    entry = {
+        "artifact": src.name + ext,
+        "format": fmt,
+        "type": "file" if src.is_file() else "dir",
+        "restore_to": str(src.parent),
+    }
     if dry_run:
         logger.info(f"[dry-run] would archive {src} → {dest_dir / (src.name + ext)}")
-        return
+        return entry
     with tempfile.TemporaryDirectory() as tmp:
         if fmt == "gztar":
             archive = _archive_tar(src, tmp, exclude_hidden, logger)
@@ -131,36 +144,39 @@ def make_archive_file(src, dest_dir, fmt, exclude_hidden, dry_run, logger):
             archive = _archive_zip(src, tmp, exclude_hidden, logger)
         dest = shutil.move(str(archive), str(dest_dir))
         logger.info(f"Moved archive to {dest}")
+    return entry
 
 
 def archive_large_dir(src, dest_dir, fmt, exclude_hidden, dry_run, logger, size_limit):
     logger.info(f"{src} exceeds size limit; archiving children individually")
+    entries = []
     for child in sorted(src.iterdir()):
         if exclude_hidden and child.name.startswith("."):
             continue
         child_size = dir_size(child, exclude_hidden) if child.is_dir() else child.stat().st_size
         if child_size <= size_limit:
-            make_archive_file(child, dest_dir, fmt, exclude_hidden, dry_run, logger)
+            entries.append(make_archive_file(child, dest_dir, fmt, exclude_hidden, dry_run, logger))
         elif child.is_dir():
-            archive_large_dir(child, dest_dir, fmt, exclude_hidden, dry_run, logger, size_limit)
+            entries.extend(archive_large_dir(child, dest_dir, fmt, exclude_hidden, dry_run, logger, size_limit))
         else:
             logger.warning(
                 f"{child} is a single file exceeding {size_limit} bytes; archiving as-is"
             )
-            make_archive_file(child, dest_dir, fmt, exclude_hidden, dry_run, logger)
+            entries.append(make_archive_file(child, dest_dir, fmt, exclude_hidden, dry_run, logger))
+    return entries
 
 
 def backup_path(src, dest_dir, fmt, exclude_hidden, dry_run, logger, size_limit=1_073_741_824):
     if fmt is None:
-        copy_item(src, dest_dir, exclude_hidden, dry_run, logger)
+        return [copy_item(src, dest_dir, exclude_hidden, dry_run, logger)]
     elif src.is_file():
-        make_archive_file(src, dest_dir, fmt, exclude_hidden, dry_run, logger)
+        return [make_archive_file(src, dest_dir, fmt, exclude_hidden, dry_run, logger)]
     else:
         size = dir_size(src, exclude_hidden)
         if size <= size_limit:
-            make_archive_file(src, dest_dir, fmt, exclude_hidden, dry_run, logger)
+            return [make_archive_file(src, dest_dir, fmt, exclude_hidden, dry_run, logger)]
         else:
-            archive_large_dir(src, dest_dir, fmt, exclude_hidden, dry_run, logger, size_limit)
+            return archive_large_dir(src, dest_dir, fmt, exclude_hidden, dry_run, logger, size_limit)
 
 
 def main():
@@ -180,6 +196,7 @@ def main():
     if not dry_run:
         dest_dir.mkdir(parents=True, exist_ok=True)
 
+    manifest_items = []
     for entry in config["backup"]:
         fmt = entry["format"]
         try:
@@ -189,7 +206,18 @@ def main():
             continue
         for src in paths:
             logger.info(f"Backing up {src}")
-            backup_path(src, dest_dir, fmt, exclude_hidden, dry_run, logger)
+            manifest_items.extend(backup_path(src, dest_dir, fmt, exclude_hidden, dry_run, logger))
+
+    if not dry_run:
+        manifest = {
+            "dest_dir": str(dest_dir),
+            "created": datetime.now().isoformat(),
+            "items": manifest_items,
+        }
+        manifest_path = dest_dir / "restore.json"
+        with open(manifest_path, "w") as f:
+            json.dump(manifest, f, indent=2)
+        logger.info(f"Wrote manifest to {manifest_path}")
 
 
 if __name__ == "__main__":
