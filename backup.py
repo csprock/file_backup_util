@@ -10,7 +10,8 @@ import yaml
 
 EXTENTION_MAP = {
     'gztar':'.tar.gz',
-    'zip':'.zip'
+    'zip':'.zip',
+    'file': None
 }
 
 LOGGER = logging.getLogger(__name__)
@@ -61,12 +62,16 @@ def main():
         LOGGER.info(f"Backing up {src_name}")
 
         if format is None:
-            pass
             dest_name = dest_dir / Path(file)
             LOGGER.info(f"Copying {src_name} without compression to {dest_name}")
             if not config['options']['dry_run']:
-                d = shutil.copytree(str(src_name), str(dest_name), dirs_exist_ok=True)
-                LOGGER.info(d)
+                try:
+                    if params['file']:
+                        LOGGER.info("Coping single file.")
+                        shutil.copytree(str(src_name), str(dest_name))
+                except KeyError:
+                    d = shutil.copytree(str(src_name), str(dest_name), dirs_exist_ok=True)
+                    LOGGER.info(d)
         else:
 
             LOGGER.info(f"Using {format} compression")
