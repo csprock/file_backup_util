@@ -1,0 +1,12 @@
+{
+  "backup": [
+    {"path": "~/Documents", "format": "gztar"},
+    {"path": "~/Projects/*", "format": "zip"},
+    {"path": "~/notes.txt", "format": null}
+  ],
+  "options": {
+    "dry_run": false,
+    "exclude_hidden": true,
+    "suffix": null
+  }
+}
