@@ -22,11 +22,15 @@ def setup_logging():
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Back up files and directories")
-    parser.add_argument("--config", required=True)
-    parser.add_argument("--destination", required=True)
+    parser = argparse.ArgumentParser(description="File backup and restore utility")
+    mode = parser.add_mutually_exclusive_group(required=True)
+    mode.add_argument("--backup", action="store_true", help="Run in backup mode")
+    mode.add_argument("--restore", action="store_true", help="Run in restore mode")
+    parser.add_argument("--config", help="Path to backup config file (--backup mode)")
+    parser.add_argument("--destination", help="Backup destination root (--backup mode)")
+    parser.add_argument("--suffix", default=None, help="Suffix for backup directory name (--backup mode)")
+    parser.add_argument("--backup-dir", help="Path to backup directory to restore from (--restore mode)")
     parser.add_argument("--dry-run", action="store_true")
-    parser.add_argument("--suffix", default=None)
     return parser.parse_args()
 
 
@@ -179,11 +183,36 @@ def backup_path(src, dest_dir, fmt, exclude_hidden, dry_run, logger, size_limit=
             return archive_large_dir(src, dest_dir, fmt, exclude_hidden, dry_run, logger, size_limit)
 
 
-def main():
-    logger = setup_logging()
-    args = parse_args()
-    config = load_config(Path(args.config))
+def restore_item(artifact_path, fmt, item_type, restore_to, dry_run, logger):
+    restore_to = Path(restore_to)
+    if dry_run:
+        logger.info(f"[dry-run] would restore {artifact_path} → {restore_to}")
+        return
+    restore_to.mkdir(parents=True, exist_ok=True)
+    if fmt is None:
+        if item_type == "file":
+            shutil.copy2(artifact_path, restore_to / artifact_path.name)
+            logger.info(f"Copied {artifact_path} → {restore_to / artifact_path.name}")
+        else:
+            shutil.copytree(artifact_path, restore_to / artifact_path.name)
+            logger.info(f"Copied directory {artifact_path} → {restore_to / artifact_path.name}")
+    elif fmt == "gztar":
+        with tarfile.open(artifact_path) as tf:
+            tf.extractall(restore_to)
+        logger.info(f"Extracted {artifact_path} → {restore_to}")
+    elif fmt == "zip":
+        with zipfile.ZipFile(artifact_path) as zf:
+            zf.extractall(restore_to)
+        logger.info(f"Extracted {artifact_path} → {restore_to}")
 
+
+def run_backup(args, logger):
+    if not args.config:
+        raise SystemExit("--config is required with --backup")
+    if not args.destination:
+        raise SystemExit("--destination is required with --backup")
+
+    config = load_config(Path(args.config))
     options = config.get("options", {})
     dry_run = args.dry_run or options.get("dry_run", False)
     exclude_hidden = options.get("exclude_hidden", False)
@@ -218,6 +247,40 @@ def main():
         with open(manifest_path, "w") as f:
             json.dump(manifest, f, indent=2)
         logger.info(f"Wrote manifest to {manifest_path}")
+
+
+def run_restore(args, logger):
+    if not args.backup_dir:
+        raise SystemExit("--backup-dir is required with --restore")
+
+    backup_dir = Path(args.backup_dir)
+    manifest_path = backup_dir / "restore.json"
+
+    with open(manifest_path) as f:
+        manifest = json.load(f)
+
+    for item in manifest["items"]:
+        artifact_path = backup_dir / item["artifact"]
+        if not artifact_path.exists():
+            logger.error(f"Artifact not found: {artifact_path}")
+            raise FileNotFoundError(artifact_path)
+        restore_item(
+            artifact_path=artifact_path,
+            fmt=item["format"],
+            item_type=item["type"],
+            restore_to=item["restore_to"],
+            dry_run=args.dry_run,
+            logger=logger,
+        )
+
+
+def main():
+    logger = setup_logging()
+    args = parse_args()
+    if args.backup:
+        run_backup(args, logger)
+    else:
+        run_restore(args, logger)
 
 
 if __name__ == "__main__":
