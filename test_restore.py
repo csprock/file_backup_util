@@ -102,7 +102,7 @@ class TestRestoreMain(unittest.TestCase):
             "type": "file",
             "restore_to": str(self.restore_to),
         }])
-        with patch("sys.argv", ["backup.py", "--restore", "--backup-dir", str(self.backup_dir)]):
+        with patch("sys.argv", ["backup_util.py", "--restore", "--backup-dir", str(self.backup_dir)]):
             backup.main()
         self.assertTrue((self.restore_to / "file.txt").exists())
 
@@ -113,7 +113,7 @@ class TestRestoreMain(unittest.TestCase):
             "type": "file",
             "restore_to": str(self.restore_to),
         }])
-        with patch("sys.argv", ["backup.py", "--restore", "--backup-dir", str(self.backup_dir)]):
+        with patch("sys.argv", ["backup_util.py", "--restore", "--backup-dir", str(self.backup_dir)]):
             with self.assertRaises(FileNotFoundError):
                 backup.main()
 

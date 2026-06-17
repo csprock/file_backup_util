@@ -11,6 +11,8 @@ import zipfile
 from datetime import datetime
 from pathlib import Path
 
+__version__ = "0.1.0"
+
 
 def setup_logging():
     logger = logging.getLogger("backup")
@@ -23,6 +25,7 @@ def setup_logging():
 
 def parse_args():
     parser = argparse.ArgumentParser(description="File backup and restore utility")
+    parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument("--backup", action="store_true", help="Run in backup mode")
     mode.add_argument("--restore", action="store_true", help="Run in restore mode")
