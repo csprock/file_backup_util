@@ -23,8 +23,37 @@ def setup_logging():
     return logger
 
 
+_CONFIG_HELP = """
+config file format (JSON):
+  {
+    "backup": [
+      {"path": "~/Documents",    "format": "gztar"},
+      {"path": "~/Projects/*",   "format": "zip"},
+      {"path": "~/notes.txt",    "format": null}
+    ],
+    "options": {
+      "dry_run":        false,
+      "exclude_hidden": true,
+      "suffix":         null
+    }
+  }
+
+  path    : absolute or ~-relative path; glob wildcards supported (each match
+            is backed up as a separate artifact)
+  format  : "gztar" (.tar.gz), "zip" (.zip), or null (copy without compression)
+  dry_run : log what would happen without writing any files
+  exclude_hidden: skip dotfiles and dot-directories
+  suffix  : appended to --destination to form the backup directory name;
+            defaults to an ISO timestamp (e.g. 2026-06-16T10-30-00)
+"""
+
+
 def parse_args():
-    parser = argparse.ArgumentParser(description="File backup and restore utility")
+    parser = argparse.ArgumentParser(
+        description="File backup and restore utility",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=_CONFIG_HELP,
+    )
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument("--backup", action="store_true", help="Run in backup mode")
