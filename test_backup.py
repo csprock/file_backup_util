@@ -410,7 +410,7 @@ class TestMain(unittest.TestCase):
             "backup": [{"path": str(src_file), "format": None}],
             "options": {"dry_run": False, "exclude_hidden": False, "suffix": None},
         })
-        with patch("sys.argv", ["backup.py", "--config", str(config_path),
+        with patch("sys.argv", ["backup.py", "--backup", "--config", str(config_path),
                                 "--destination", dest_base, "--suffix", "test"]):
             backup.main()
         dest_dir = Path(dest_base + "_test")
@@ -430,7 +430,7 @@ class TestMain(unittest.TestCase):
             "backup": [{"path": str(src_file), "format": None}],
             "options": {"dry_run": False, "exclude_hidden": False, "suffix": None},
         })
-        with patch("sys.argv", ["backup.py", "--config", str(config_path),
+        with patch("sys.argv", ["backup.py", "--backup", "--config", str(config_path),
                                 "--destination", dest_base, "--suffix", "test",
                                 "--dry-run"]):
             backup.main()

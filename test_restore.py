@@ -8,7 +8,7 @@ import zipfile
 from pathlib import Path
 from unittest.mock import patch
 
-import restore
+import backup
 
 logger = logging.getLogger("test")
 logger.addHandler(logging.NullHandler())
@@ -29,8 +29,8 @@ class TestRestoreItem(unittest.TestCase):
     def test_restore_file(self):
         artifact = self.backup_dir / "file.txt"
         artifact.write_text("hello")
-        restore.restore_item(artifact, fmt=None, item_type="file",
-                             restore_to=self.restore_to, dry_run=False, logger=logger)
+        backup.restore_item(artifact, fmt=None, item_type="file",
+                            restore_to=self.restore_to, dry_run=False, logger=logger)
         self.assertTrue((self.restore_to / "file.txt").exists())
         self.assertEqual((self.restore_to / "file.txt").read_text(), "hello")
 
@@ -38,8 +38,8 @@ class TestRestoreItem(unittest.TestCase):
         artifact_dir = self.backup_dir / "mydir"
         artifact_dir.mkdir()
         (artifact_dir / "file.txt").write_text("world")
-        restore.restore_item(artifact_dir, fmt=None, item_type="dir",
-                             restore_to=self.restore_to, dry_run=False, logger=logger)
+        backup.restore_item(artifact_dir, fmt=None, item_type="dir",
+                            restore_to=self.restore_to, dry_run=False, logger=logger)
         self.assertTrue((self.restore_to / "mydir" / "file.txt").exists())
 
     def test_restore_tar(self):
@@ -49,8 +49,8 @@ class TestRestoreItem(unittest.TestCase):
         archive = self.backup_dir / "src.tar.gz"
         with tarfile.open(archive, "w:gz") as tf:
             tf.add(src_dir, arcname="src")
-        restore.restore_item(archive, fmt="gztar", item_type="dir",
-                             restore_to=self.restore_to, dry_run=False, logger=logger)
+        backup.restore_item(archive, fmt="gztar", item_type="dir",
+                            restore_to=self.restore_to, dry_run=False, logger=logger)
         self.assertTrue((self.restore_to / "src" / "file.txt").exists())
         self.assertEqual((self.restore_to / "src" / "file.txt").read_text(), "compressed")
 
@@ -61,16 +61,16 @@ class TestRestoreItem(unittest.TestCase):
         archive = self.backup_dir / "src.zip"
         with zipfile.ZipFile(archive, "w") as zf:
             zf.write(src_dir / "file.txt", "src/file.txt")
-        restore.restore_item(archive, fmt="zip", item_type="dir",
-                             restore_to=self.restore_to, dry_run=False, logger=logger)
+        backup.restore_item(archive, fmt="zip", item_type="dir",
+                            restore_to=self.restore_to, dry_run=False, logger=logger)
         self.assertTrue((self.restore_to / "src" / "file.txt").exists())
         self.assertEqual((self.restore_to / "src" / "file.txt").read_text(), "zipped")
 
     def test_dry_run_writes_nothing(self):
         artifact = self.backup_dir / "file.txt"
         artifact.write_text("hello")
-        restore.restore_item(artifact, fmt=None, item_type="file",
-                             restore_to=self.restore_to, dry_run=True, logger=logger)
+        backup.restore_item(artifact, fmt=None, item_type="file",
+                            restore_to=self.restore_to, dry_run=True, logger=logger)
         self.assertFalse(self.restore_to.exists())
 
 
@@ -102,8 +102,8 @@ class TestRestoreMain(unittest.TestCase):
             "type": "file",
             "restore_to": str(self.restore_to),
         }])
-        with patch("sys.argv", ["restore.py", "--backup", str(self.backup_dir)]):
-            restore.main()
+        with patch("sys.argv", ["backup.py", "--restore", "--backup-dir", str(self.backup_dir)]):
+            backup.main()
         self.assertTrue((self.restore_to / "file.txt").exists())
 
     def test_missing_artifact_raises(self):
@@ -113,9 +113,9 @@ class TestRestoreMain(unittest.TestCase):
             "type": "file",
             "restore_to": str(self.restore_to),
         }])
-        with patch("sys.argv", ["restore.py", "--backup", str(self.backup_dir)]):
+        with patch("sys.argv", ["backup.py", "--restore", "--backup-dir", str(self.backup_dir)]):
             with self.assertRaises(FileNotFoundError):
-                restore.main()
+                backup.main()
 
 
 if __name__ == "__main__":
