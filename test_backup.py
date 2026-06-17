@@ -8,7 +8,7 @@ import zipfile
 from pathlib import Path
 from unittest.mock import patch
 
-import backup
+import backup_util as backup
 
 logger = logging.getLogger("test")
 logger.addHandler(logging.NullHandler())
