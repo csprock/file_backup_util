@@ -4,7 +4,6 @@ import logging
 import tarfile
 import tempfile
 import unittest
-import zipfile
 from pathlib import Path
 from unittest.mock import patch
 
@@ -32,17 +31,24 @@ class TestLoadConfig(unittest.TestCase):
         path = self._write_config({
             "backup": [
                 {"path": "/a", "format": "gztar"},
-                {"path": "/b", "format": "zip"},
                 {"path": "/c", "format": None},
             ],
             "options": {}
         })
         config = backup.load_config(path)
-        self.assertEqual(len(config["backup"]), 3)
+        self.assertEqual(len(config["backup"]), 2)
 
     def test_invalid_format_raises(self):
         path = self._write_config({
             "backup": [{"path": "/a", "format": "bzip2"}],
+            "options": {}
+        })
+        with self.assertRaises(ValueError):
+            backup.load_config(path)
+
+    def test_zip_format_rejected(self):
+        path = self._write_config({
+            "backup": [{"path": "/a", "format": "zip"}],
             "options": {}
         })
         with self.assertRaises(ValueError):
@@ -212,42 +218,6 @@ class TestArchiveTar(unittest.TestCase):
         self.assertFalse(any(".hidden" in n for n in names))
 
 
-class TestArchiveZip(unittest.TestCase):
-
-    def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
-        self.root = Path(self.tmp.name)
-        self.src = self.root / "mydir"
-        self.src.mkdir()
-        self.out = self.root / "out"
-        self.out.mkdir()
-
-    def tearDown(self):
-        self.tmp.cleanup()
-
-    def test_creates_archive(self):
-        (self.src / "file.txt").write_text("hello")
-        result = backup._archive_zip(self.src, self.out, exclude_hidden=False, logger=logger)
-        self.assertTrue(result.exists())
-        self.assertEqual(result.name, "mydir.zip")
-
-    def test_archive_contains_files(self):
-        (self.src / "file.txt").write_text("hello")
-        result = backup._archive_zip(self.src, self.out, exclude_hidden=False, logger=logger)
-        with zipfile.ZipFile(result) as zf:
-            names = zf.namelist()
-        self.assertIn("mydir/file.txt", names)
-
-    def test_exclude_hidden(self):
-        (self.src / "visible.txt").write_text("hi")
-        (self.src / ".hidden").write_text("secret")
-        result = backup._archive_zip(self.src, self.out, exclude_hidden=True, logger=logger)
-        with zipfile.ZipFile(result) as zf:
-            names = zf.namelist()
-        self.assertIn("mydir/visible.txt", names)
-        self.assertNotIn("mydir/.hidden", names)
-
-
 class TestMakeArchiveFile(unittest.TestCase):
 
     def setUp(self):
@@ -274,17 +244,13 @@ class TestMakeArchiveFile(unittest.TestCase):
         self.assertEqual(entry["type"], "dir")
         self.assertEqual(entry["restore_to"], str(self.root))
 
-    def test_zip_format(self):
-        backup.make_archive_file(self.src, self.dest, "zip", exclude_hidden=False, dry_run=False, logger=logger)
-        self.assertTrue((self.dest / "mydir.zip").exists())
-
     def test_dry_run_writes_nothing(self):
-        backup.make_archive_file(self.src, self.dest, "zip", exclude_hidden=False, dry_run=True, logger=logger)
+        backup.make_archive_file(self.src, self.dest, "gztar", exclude_hidden=False, dry_run=True, logger=logger)
         self.assertFalse(any(self.dest.iterdir()))
 
     def test_dry_run_returns_entry(self):
-        entry = backup.make_archive_file(self.src, self.dest, "zip", exclude_hidden=False, dry_run=True, logger=logger)
-        self.assertEqual(entry["artifact"], "mydir.zip")
+        entry = backup.make_archive_file(self.src, self.dest, "gztar", exclude_hidden=False, dry_run=True, logger=logger)
+        self.assertEqual(entry["artifact"], "mydir.tar.gz")
         self.assertEqual(entry["type"], "dir")
 
 
@@ -381,7 +347,7 @@ class TestBackupPath(unittest.TestCase):
         (d / "child1.txt").write_bytes(b"x" * 5)
         (d / "child2.txt").write_bytes(b"x" * 5)
         entries = backup.backup_path(
-            d, self.dest, fmt="zip",
+            d, self.dest, fmt="gztar",
             exclude_hidden=False, dry_run=False,
             logger=logger, size_limit=1,
         )

@@ -1,7 +1,7 @@
 {
   "backup": [
     {"path": "~/Documents", "format": "gztar"},
-    {"path": "~/Projects/*", "format": "zip"},
+    {"path": "~/Projects/*", "format": "gztar"},
     {"path": "~/notes.txt", "format": null}
   ],
   "options": {

@@ -7,7 +7,6 @@ import os
 import shutil
 import tarfile
 import tempfile
-import zipfile
 from datetime import datetime
 from pathlib import Path
 
@@ -28,7 +27,7 @@ config file format (JSON):
   {
     "backup": [
       {"path": "~/Documents",    "format": "gztar"},
-      {"path": "~/Projects/*",   "format": "zip"},
+      {"path": "~/Projects/*",   "format": "gztar"},
       {"path": "~/notes.txt",    "format": null}
     ],
     "options": {
@@ -40,7 +39,9 @@ config file format (JSON):
 
   path    : absolute or ~-relative path; glob wildcards supported (each match
             is backed up as a separate artifact)
-  format  : "gztar" (.tar.gz), "zip" (.zip), or null (copy without compression)
+  format  : "gztar" (.tar.gz) or null (copy without compression). gztar and
+            null preserve symlinks and Unix permissions; gztar is recommended
+            for directories.
   dry_run : log what would happen without writing any files
   exclude_hidden: skip dotfiles and dot-directories
   suffix  : appended to --destination to form the backup directory name;
@@ -62,6 +63,12 @@ def parse_args():
     parser.add_argument("--destination", help="Backup destination root (--backup mode)")
     parser.add_argument("--suffix", default=None, help="Suffix for backup directory name (--backup mode)")
     parser.add_argument("--backup-dir", help="Path to backup directory to restore from (--restore mode)")
+    parser.add_argument(
+        "--target",
+        help="Restore everything under this directory, recreating each item's "
+        "original path tree beneath it, instead of restoring to the original "
+        "locations (--restore mode)",
+    )
     parser.add_argument("--dry-run", action="store_true")
     return parser.parse_args()
 
@@ -69,7 +76,7 @@ def parse_args():
 def load_config(path):
     with open(path) as f:
         config = json.load(f)
-    valid_formats = {None, "gztar", "zip"}
+    valid_formats = {None, "gztar"}
     for entry in config["backup"]:
         if entry["format"] not in valid_formats:
             raise ValueError(
@@ -119,7 +126,7 @@ def copy_item(src, dest_dir, exclude_hidden, dry_run, logger):
         logger.info(f"Copied file {src} → {dest_dir / src.name}")
     elif src.is_dir():
         ignore = shutil.ignore_patterns(".*") if exclude_hidden else None
-        shutil.copytree(src, dest_dir / src.name, ignore=ignore)
+        shutil.copytree(src, dest_dir / src.name, ignore=ignore, symlinks=True)
         logger.info(f"Copied directory {src} → {dest_dir / src.name}")
     return entry
 
@@ -140,30 +147,8 @@ def _archive_tar(src, output_dir, exclude_hidden, logger):
     return output_path
 
 
-def _archive_zip(src, output_dir, exclude_hidden, logger):
-    archive_name = src.name + ".zip"
-    output_path = Path(output_dir) / archive_name
-
-    with zipfile.ZipFile(output_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
-        if src.is_file():
-            if not (exclude_hidden and src.name.startswith(".")):
-                zf.write(src, src.name)
-        else:
-            for dirpath, dirnames, filenames in os.walk(src):
-                if exclude_hidden:
-                    dirnames[:] = [d for d in dirnames if not d.startswith(".")]
-                    filenames = [f for f in filenames if not f.startswith(".")]
-                for filename in filenames:
-                    full_path = Path(dirpath) / filename
-                    arcname = full_path.relative_to(src.parent)
-                    zf.write(full_path, arcname)
-
-    logger.info(f"Created zip archive {output_path}")
-    return output_path
-
-
 def make_archive_file(src, dest_dir, fmt, exclude_hidden, dry_run, logger):
-    ext = ".tar.gz" if fmt == "gztar" else ".zip"
+    ext = ".tar.gz"
     entry = {
         "artifact": src.name + ext,
         "format": fmt,
@@ -174,10 +159,7 @@ def make_archive_file(src, dest_dir, fmt, exclude_hidden, dry_run, logger):
         logger.info(f"[dry-run] would archive {src} → {dest_dir / (src.name + ext)}")
         return entry
     with tempfile.TemporaryDirectory() as tmp:
-        if fmt == "gztar":
-            archive = _archive_tar(src, tmp, exclude_hidden, logger)
-        else:
-            archive = _archive_zip(src, tmp, exclude_hidden, logger)
+        archive = _archive_tar(src, tmp, exclude_hidden, logger)
         dest = shutil.move(str(archive), str(dest_dir))
         logger.info(f"Moved archive to {dest}")
     return entry
@@ -221,20 +203,24 @@ def restore_item(artifact_path, fmt, item_type, restore_to, dry_run, logger):
         logger.info(f"[dry-run] would restore {artifact_path} → {restore_to}")
         return
     restore_to.mkdir(parents=True, exist_ok=True)
+    # Top-level name the item will occupy under restore_to (the archive name
+    # minus its .tar.gz suffix, or the file/dir name as-is for copies).
+    final_name = artifact_path.name[: -len(".tar.gz")] if fmt == "gztar" else artifact_path.name
+    if (restore_to / final_name).exists():
+        logger.warning(f"{restore_to / final_name} already exists; overwriting")
     if fmt is None:
         if item_type == "file":
             shutil.copy2(artifact_path, restore_to / artifact_path.name)
             logger.info(f"Copied {artifact_path} → {restore_to / artifact_path.name}")
         else:
-            shutil.copytree(artifact_path, restore_to / artifact_path.name)
+            # symlinks=True keeps symlinks as links; dirs_exist_ok lets a restore
+            # overwrite/merge into an existing tree instead of failing.
+            shutil.copytree(artifact_path, restore_to / artifact_path.name,
+                            symlinks=True, dirs_exist_ok=True)
             logger.info(f"Copied directory {artifact_path} → {restore_to / artifact_path.name}")
     elif fmt == "gztar":
         with tarfile.open(artifact_path) as tf:
             tf.extractall(restore_to)
-        logger.info(f"Extracted {artifact_path} → {restore_to}")
-    elif fmt == "zip":
-        with zipfile.ZipFile(artifact_path) as zf:
-            zf.extractall(restore_to)
         logger.info(f"Extracted {artifact_path} → {restore_to}")
 
 
@@ -291,16 +277,31 @@ def run_restore(args, logger):
     with open(manifest_path) as f:
         manifest = json.load(f)
 
+    # With --target, every item is restored under that directory with its
+    # original path tree recreated beneath it (e.g. /home/u/Docs becomes
+    # <target>/home/u/Docs), instead of restoring to its original location.
+    target = Path(args.target).resolve() if args.target else None
+    if target:
+        logger.info(f"Rerooting all items under {target}")
+
     for item in manifest["items"]:
         artifact_path = backup_dir / item["artifact"]
         if not artifact_path.exists():
             logger.error(f"Artifact not found: {artifact_path}")
             raise FileNotFoundError(artifact_path)
+        original = Path(item["restore_to"])
+        if target:
+            # Strip the leading "/" so the full original tree is recreated
+            # beneath target rather than restoring from the filesystem root.
+            parts = original.parts[1:] if original.anchor else original.parts
+            restore_to = str(target.joinpath(*parts))
+        else:
+            restore_to = str(original)
         restore_item(
             artifact_path=artifact_path,
             fmt=item["format"],
             item_type=item["type"],
-            restore_to=item["restore_to"],
+            restore_to=restore_to,
             dry_run=args.dry_run,
             logger=logger,
         )
