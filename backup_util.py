@@ -36,7 +36,8 @@ config file format (JSON):
     "options": {
       "dry_run":        false,
       "exclude_hidden": true,
-      "suffix":         null
+      "suffix":         null,
+      "destination":    null
     }
   }
 
@@ -49,6 +50,8 @@ config file format (JSON):
   exclude_hidden: skip dotfiles and dot-directories
   suffix  : appended to --destination to form the backup directory name;
             defaults to an ISO timestamp (e.g. 2026-06-16T10-30-00)
+  destination: backup destination root; used if --destination is not passed
+            on the command line. --destination always takes precedence.
 """
 
 
@@ -63,7 +66,10 @@ def parse_args():
     mode.add_argument("--backup", action="store_true", help="Run in backup mode")
     mode.add_argument("--restore", action="store_true", help="Run in restore mode")
     parser.add_argument("--config", help="Path to backup config file (--backup mode)")
-    parser.add_argument("--destination", help="Backup destination root (--backup mode)")
+    parser.add_argument(
+        "--destination",
+        help="Backup destination root; overrides config options.destination (--backup mode)",
+    )
     parser.add_argument("--suffix", default=None, help="Suffix for backup directory name (--backup mode)")
     parser.add_argument(
         "--size-limit-mb",
@@ -237,11 +243,12 @@ def restore_item(artifact_path, fmt, item_type, restore_to, dry_run, logger):
 def run_backup(args, logger):
     if not args.config:
         raise SystemExit("--config is required with --backup")
-    if not args.destination:
-        raise SystemExit("--destination is required with --backup")
 
     config = load_config(Path(args.config))
     options = config.get("options", {})
+    destination = args.destination or options.get("destination")
+    if not destination:
+        raise SystemExit("--destination is required (via --destination or config options.destination)")
     dry_run = args.dry_run or options.get("dry_run", False)
     exclude_hidden = options.get("exclude_hidden", False)
     suffix = args.suffix or options.get("suffix") or datetime.now().isoformat().replace(":", "-")
@@ -249,7 +256,7 @@ def run_backup(args, logger):
         args.size_limit_mb * BYTES_PER_MB if args.size_limit_mb is not None else DEFAULT_SIZE_LIMIT_BYTES
     )
 
-    dest_dir = Path(args.destination + "_" + suffix).resolve()
+    dest_dir = Path(destination + "_" + suffix).resolve()
     logger.info(f"Destination: {dest_dir}")
     logger.info(f"Dry run: {dry_run}")
 
