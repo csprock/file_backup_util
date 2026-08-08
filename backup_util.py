@@ -12,6 +12,9 @@ from pathlib import Path
 
 __version__ = "0.1.0"
 
+DEFAULT_SIZE_LIMIT_BYTES = 1_073_741_824  # ~1GB, used when --size-limit-mb is omitted
+BYTES_PER_MB = 1_000_000  # decimal MB, e.g. 2GB == 2000MB
+
 
 def setup_logging():
     logger = logging.getLogger("backup")
@@ -62,6 +65,13 @@ def parse_args():
     parser.add_argument("--config", help="Path to backup config file (--backup mode)")
     parser.add_argument("--destination", help="Backup destination root (--backup mode)")
     parser.add_argument("--suffix", default=None, help="Suffix for backup directory name (--backup mode)")
+    parser.add_argument(
+        "--size-limit-mb",
+        type=int,
+        default=None,
+        help="Split archives larger than this many MB (decimal, e.g. 2000 = 2GB) "
+        "into per-child archives; defaults to ~1GB (--backup mode)",
+    )
     parser.add_argument("--backup-dir", help="Path to backup directory to restore from (--restore mode)")
     parser.add_argument(
         "--target",
@@ -184,7 +194,7 @@ def archive_large_dir(src, dest_dir, fmt, exclude_hidden, dry_run, logger, size_
     return entries
 
 
-def backup_path(src, dest_dir, fmt, exclude_hidden, dry_run, logger, size_limit=1_073_741_824):
+def backup_path(src, dest_dir, fmt, exclude_hidden, dry_run, logger, size_limit=DEFAULT_SIZE_LIMIT_BYTES):
     if fmt is None:
         return [copy_item(src, dest_dir, exclude_hidden, dry_run, logger)]
     elif src.is_file():
@@ -235,6 +245,9 @@ def run_backup(args, logger):
     dry_run = args.dry_run or options.get("dry_run", False)
     exclude_hidden = options.get("exclude_hidden", False)
     suffix = args.suffix or options.get("suffix") or datetime.now().isoformat().replace(":", "-")
+    size_limit = (
+        args.size_limit_mb * BYTES_PER_MB if args.size_limit_mb is not None else DEFAULT_SIZE_LIMIT_BYTES
+    )
 
     dest_dir = Path(args.destination + "_" + suffix).resolve()
     logger.info(f"Destination: {dest_dir}")
@@ -253,7 +266,7 @@ def run_backup(args, logger):
             continue
         for src in paths:
             logger.info(f"Backing up {src}")
-            manifest_items.extend(backup_path(src, dest_dir, fmt, exclude_hidden, dry_run, logger))
+            manifest_items.extend(backup_path(src, dest_dir, fmt, exclude_hidden, dry_run, logger, size_limit))
 
     if not dry_run:
         manifest = {
