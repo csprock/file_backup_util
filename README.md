@@ -20,9 +20,11 @@ python3 backup_util.py --backup --config backup.json --destination /mnt/external
 ```
 
 - `--config` (required): path to the JSON config file describing what to back up.
-- `--destination` (required): root path for the backup. The actual backup
-  directory is `<destination>_<suffix>`, where `<suffix>` defaults to an ISO
-  timestamp (e.g. `/mnt/external/backups_2026-06-16T10-30-00`).
+- `--destination`: root path for the backup. The actual backup directory is
+  `<destination>_<suffix>`, where `<suffix>` defaults to an ISO timestamp
+  (e.g. `/mnt/external/backups_2026-06-16T10-30-00`). Can also be set via
+  `options.destination` in the config file; `--destination` takes precedence
+  if both are given. One or the other is required.
 - `--suffix`: override the timestamp suffix.
 - `--size-limit-mb`: override the archive-splitting size limit (decimal MB,
   e.g. `2000` = 2GB). Defaults to ~1GB if omitted. See
@@ -72,7 +74,8 @@ Config files are JSON:
   "options": {
     "dry_run":        false,
     "exclude_hidden": true,
-    "suffix":         null
+    "suffix":         null,
+    "destination":    null
   }
 }
 ```
@@ -120,6 +123,8 @@ is logged as an error and skipped rather than failing the run.
 - `suffix`: appended to `--destination` to form the backup directory name.
   Defaults to an ISO timestamp (e.g. `2026-06-16T10-30-00`) if not set here
   or via `--suffix`.
+- `destination`: backup destination root, used if `--destination` isn't
+  passed on the command line. `--destination` always takes precedence.
 
 ## Large directories
 
