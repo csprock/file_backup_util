@@ -85,6 +85,33 @@ Config files are JSON:
   the file/directory as-is. Both preserve symlinks and Unix permissions;
   `gztar` is recommended for directories.
 
+#### Wildcard vs. non-wildcard paths
+
+Whether `path` contains a wildcard changes how a directory is grouped into
+artifacts:
+
+- **No wildcard** (e.g. `~/Documents`): the path resolves to a single match —
+  the directory itself. It's backed up as one unit (one `directory.tar.gz`
+  with `gztar`, or one copied tree with `null`), and restored as one unit
+  back into its parent directory.
+- **Wildcard** (e.g. `~/Documents/*`): the pattern expands to every item
+  directly inside the directory (one level deep, non-recursive) — each file
+  and each immediate subdirectory becomes its own independent artifact with
+  its own manifest entry. Restoring writes each item back individually into
+  the directory, rather than extracting one combined archive. This is
+  useful when you want per-item failure isolation or smaller archives up
+  front, rather than relying on the automatic splitting described in
+  [Large directories](#large-directories) (which only splits when the whole
+  directory exceeds the size limit, and splits adaptively rather than
+  always at one level).
+
+Note that glob's `*` never matches dotfiles, so a wildcard path silently
+skips hidden top-level entries regardless of `exclude_hidden`. A
+non-wildcard path always includes the directory itself; `exclude_hidden`
+only filters dotfiles *inside* it during the copy/archive step. If a
+wildcard matches nothing (e.g. the directory is empty), that config entry
+is logged as an error and skipped rather than failing the run.
+
 **`options`** (all optional):
 
 - `dry_run`: log what would happen without writing any files. Also settable
