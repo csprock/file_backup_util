@@ -140,7 +140,7 @@ class TestRestoreMain(unittest.TestCase):
             backup.main()
         self.assertTrue((self.restore_to / "file.txt").exists())
 
-    def test_target_reroots_original_tree_under_target(self):
+    def test_target_restores_directly_under_target(self):
         (self.backup_dir / "file.txt").write_text("hello")
         original = self.root / "original_location"
         target = self.root / "elsewhere"
@@ -149,33 +149,55 @@ class TestRestoreMain(unittest.TestCase):
             "format": None,
             "type": "file",
             "restore_to": str(original),
+            "restore_root": str(original),
         }])
         with patch("sys.argv", ["backup_util.py", "--restore", "--backup-dir",
                                 str(self.backup_dir), "--target", str(target)]):
             backup.main()
-        # The full original path is recreated under target (anchor stripped).
-        rerooted = target / original.relative_to(original.anchor)
-        self.assertTrue((rerooted / "file.txt").exists())
+        # The original parent path is discarded; the item lands directly under target.
+        self.assertTrue((target / "file.txt").exists())
         self.assertFalse(original.exists())
 
-    def test_target_keeps_same_named_items_distinct(self):
-        # Two items named "notes.txt" from different parents must not collide.
+    def test_target_places_each_item_directly_under_target(self):
         (self.backup_dir / "a.txt").write_text("from a")
         (self.backup_dir / "b.txt").write_text("from b")
         parent_a = self.root / "projects" / "a"
         parent_b = self.root / "projects" / "b"
         target = self.root / "elsewhere"
         self._write_manifest([
-            {"artifact": "a.txt", "format": None, "type": "file", "restore_to": str(parent_a)},
-            {"artifact": "b.txt", "format": None, "type": "file", "restore_to": str(parent_b)},
+            {"artifact": "a.txt", "format": None, "type": "file",
+             "restore_to": str(parent_a), "restore_root": str(parent_a)},
+            {"artifact": "b.txt", "format": None, "type": "file",
+             "restore_to": str(parent_b), "restore_root": str(parent_b)},
         ])
         with patch("sys.argv", ["backup_util.py", "--restore", "--backup-dir",
                                 str(self.backup_dir), "--target", str(target)]):
             backup.main()
-        a = target / parent_a.relative_to(parent_a.anchor) / "a.txt"
-        b = target / parent_b.relative_to(parent_b.anchor) / "b.txt"
-        self.assertEqual(a.read_text(), "from a")
-        self.assertEqual(b.read_text(), "from b")
+        self.assertEqual((target / "a.txt").read_text(), "from a")
+        self.assertEqual((target / "b.txt").read_text(), "from b")
+
+    def test_target_preserves_relative_subtree_for_split_items(self):
+        # An item that was split off deep inside a large backed-up directory
+        # (restore_root is the top-level entry's parent, restore_to is the
+        # item's true, deeper original parent) should keep that intermediate
+        # structure under --target rather than landing flat.
+        (self.backup_dir / "deep.txt").write_text("nested")
+        top_level_parent = self.root / "home" / "user1"
+        deep_original_parent = top_level_parent / "Documents" / "subdirA" / "nested"
+        target = self.root / "elsewhere"
+        self._write_manifest([{
+            "artifact": "deep.txt",
+            "format": None,
+            "type": "file",
+            "restore_to": str(deep_original_parent),
+            "restore_root": str(top_level_parent),
+        }])
+        with patch("sys.argv", ["backup_util.py", "--restore", "--backup-dir",
+                                str(self.backup_dir), "--target", str(target)]):
+            backup.main()
+        self.assertEqual(
+            (target / "Documents" / "subdirA" / "nested" / "deep.txt").read_text(), "nested"
+        )
 
     def test_missing_artifact_raises(self):
         self._write_manifest([{

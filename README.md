@@ -44,12 +44,19 @@ python3 backup_util.py --restore --backup-dir /mnt/external/backups_2026-06-16T1
 
 - `--backup-dir` (required): the backup directory produced by a previous
   `--backup` run (it must contain `restore.json`).
-- `--target`: instead of restoring each item to its original path, recreate
-  every item's original path tree beneath this directory. For example, an
-  item originally at `/home/user/Documents` gets restored to
-  `<target>/home/user/Documents` rather than overwriting
-  `/home/user/Documents`. Useful for restoring to a new machine or a
-  scratch location for inspection.
+- `--target`: instead of restoring each item to its original path, restore it
+  under this directory, rooted at its top-level backed-up name, rather than
+  overwriting its original location. An item originally backed up from
+  `/home/user1/Documents` gets restored to `<target>/Documents`. If that
+  directory was split into multiple artifacts by `--size-limit-mb` (see
+  [Large directories](#large-directories)), each artifact's path relative to
+  `Documents` is preserved too — e.g. a split-off
+  `Documents/subdirA/file.txt` still lands at
+  `<target>/Documents/subdirA/file.txt`, not flattened directly under
+  `<target>`. Useful for restoring to a new machine or a scratch location
+  for inspection. If two items share the same resulting top-level name, the
+  later one in the manifest overwrites the earlier one under `--target`
+  (with a warning logged).
 - `--dry-run`: log what would be restored without writing anything.
 
 Restoring a directory or file that was copied (uncompressed) preserves
