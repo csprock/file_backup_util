@@ -158,7 +158,10 @@ decimal MB — e.g. `--size-limit-mb 2000` for a 2GB limit). If a directory
 exceeds the limit, the tool descends into its children and archives each one
 separately, recursing further into any child that is itself still too large.
 A single file larger than the limit is archived as-is with a warning, since
-it can't be split further.
+it can't be split further. Split-off archives are stored inside the backup
+directory nested under their original relative path (e.g. a split-off
+`bigdir/service_a/.env` lands at `<backup-dir>/bigdir/service_a/.env.tar.gz`),
+so same-named files in different branches never collide.
 
 ## Behavior notes
 

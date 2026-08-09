@@ -276,8 +276,8 @@ class TestArchiveLargeDir(unittest.TestCase):
             logger=logger, size_limit=100,
         )
         self.assertEqual(len(entries), 2)
-        self.assertTrue((self.dest / "child1.txt.tar.gz").exists())
-        self.assertTrue((self.dest / "child2.txt.tar.gz").exists())
+        self.assertTrue((self.dest / "bigdir" / "child1.txt.tar.gz").exists())
+        self.assertTrue((self.dest / "bigdir" / "child2.txt.tar.gz").exists())
 
     def test_restore_to_is_child_parent(self):
         (self.src / "child.txt").write_bytes(b"x" * 5)
@@ -297,7 +297,7 @@ class TestArchiveLargeDir(unittest.TestCase):
             logger=logger, size_limit=100,
         )
         self.assertEqual(len(entries), 1)
-        self.assertEqual(entries[0]["artifact"], "visible.txt.tar.gz")
+        self.assertEqual(entries[0]["artifact"], "bigdir/visible.txt.tar.gz")
 
     def test_recurses_into_oversized_subdir(self):
         subdir = self.src / "subdir"
@@ -311,8 +311,31 @@ class TestArchiveLargeDir(unittest.TestCase):
             logger=logger, size_limit=1,
         )
         self.assertEqual(len(entries), 1)
-        self.assertEqual(entries[0]["artifact"], "file.txt.tar.gz")
+        self.assertEqual(entries[0]["artifact"], "bigdir/subdir/file.txt.tar.gz")
         self.assertEqual(entries[0]["restore_to"], str(subdir))
+
+    def test_same_named_children_in_different_branches_do_not_collide(self):
+        # Two subdirectories each containing a same-named ".env" file: both
+        # get split off individually, and must not collide in dest_dir.
+        service_a = self.src / "service_a"
+        service_b = self.src / "service_b"
+        service_a.mkdir()
+        service_b.mkdir()
+        (service_a / ".env").write_bytes(b"x" * 5)
+        (service_b / ".env").write_bytes(b"x" * 5)
+        # size_limit=1 forces recursion into both service_a and service_b.
+        entries = backup.archive_large_dir(
+            self.src, self.dest, "gztar",
+            exclude_hidden=False, dry_run=False,
+            logger=logger, size_limit=1,
+        )
+        artifacts = sorted(e["artifact"] for e in entries)
+        self.assertEqual(
+            artifacts,
+            ["bigdir/service_a/.env.tar.gz", "bigdir/service_b/.env.tar.gz"],
+        )
+        self.assertTrue((self.dest / "bigdir" / "service_a" / ".env.tar.gz").exists())
+        self.assertTrue((self.dest / "bigdir" / "service_b" / ".env.tar.gz").exists())
 
 
 class TestBackupPath(unittest.TestCase):
