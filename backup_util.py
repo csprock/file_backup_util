@@ -133,6 +133,7 @@ def copy_item(src, dest_dir, exclude_hidden, dry_run, logger):
         "format": None,
         "type": "file" if src.is_file() else "dir",
         "restore_to": str(src.parent),
+        "restore_root": str(src.parent),
     }
     if dry_run:
         logger.info(f"[dry-run] would copy {src} → {dest_dir / src.name}")
@@ -163,13 +164,14 @@ def _archive_tar(src, output_dir, exclude_hidden, logger):
     return output_path
 
 
-def make_archive_file(src, dest_dir, fmt, exclude_hidden, dry_run, logger):
+def make_archive_file(src, dest_dir, fmt, exclude_hidden, dry_run, logger, root=None):
     ext = ".tar.gz"
     entry = {
         "artifact": src.name + ext,
         "format": fmt,
         "type": "file" if src.is_file() else "dir",
         "restore_to": str(src.parent),
+        "restore_root": str(root if root is not None else src.parent),
     }
     if dry_run:
         logger.info(f"[dry-run] would archive {src} → {dest_dir / (src.name + ext)}")
@@ -181,7 +183,12 @@ def make_archive_file(src, dest_dir, fmt, exclude_hidden, dry_run, logger):
     return entry
 
 
-def archive_large_dir(src, dest_dir, fmt, exclude_hidden, dry_run, logger, size_limit):
+def archive_large_dir(src, dest_dir, fmt, exclude_hidden, dry_run, logger, size_limit, root=None):
+    # root is the parent of the top-level path originally passed to backup_path;
+    # it's threaded unchanged through recursive splits so every descendant's
+    # "restore_root" still points at that same top-level parent, letting
+    # restore rebuild the relative subtree under --target.
+    root = root if root is not None else src.parent
     logger.info(f"{src} exceeds size limit; archiving children individually")
     entries = []
     for child in sorted(src.iterdir()):
@@ -189,14 +196,14 @@ def archive_large_dir(src, dest_dir, fmt, exclude_hidden, dry_run, logger, size_
             continue
         child_size = dir_size(child, exclude_hidden) if child.is_dir() else child.stat().st_size
         if child_size <= size_limit:
-            entries.append(make_archive_file(child, dest_dir, fmt, exclude_hidden, dry_run, logger))
+            entries.append(make_archive_file(child, dest_dir, fmt, exclude_hidden, dry_run, logger, root))
         elif child.is_dir():
-            entries.extend(archive_large_dir(child, dest_dir, fmt, exclude_hidden, dry_run, logger, size_limit))
+            entries.extend(archive_large_dir(child, dest_dir, fmt, exclude_hidden, dry_run, logger, size_limit, root))
         else:
             logger.warning(
                 f"{child} is a single file exceeding {size_limit} bytes; archiving as-is"
             )
-            entries.append(make_archive_file(child, dest_dir, fmt, exclude_hidden, dry_run, logger))
+            entries.append(make_archive_file(child, dest_dir, fmt, exclude_hidden, dry_run, logger, root))
     return entries
 
 
@@ -297,10 +304,12 @@ def run_restore(args, logger):
     with open(manifest_path) as f:
         manifest = json.load(f)
 
-    # With --target, each item is restored directly under that directory
-    # using its own top-level name (e.g. a backed-up /home/u/Documents
-    # becomes <target>/Documents), instead of restoring to its original
-    # location.
+    # With --target, each item is restored under that directory with its
+    # subtree relative to its top-level backed-up entry preserved (e.g. a
+    # backed-up /home/u/Documents, or a piece of it split off by the size
+    # limit such as Documents/subdirA/file.txt, becomes <target>/Documents
+    # or <target>/Documents/subdirA/file.txt respectively), instead of
+    # restoring to its original location.
     target = Path(args.target).resolve() if args.target else None
     if target:
         logger.info(f"Restoring items under {target} instead of their original locations")
@@ -310,7 +319,11 @@ def run_restore(args, logger):
         if not artifact_path.exists():
             logger.error(f"Artifact not found: {artifact_path}")
             raise FileNotFoundError(artifact_path)
-        restore_to = str(target) if target else item["restore_to"]
+        if target:
+            relative = Path(item["restore_to"]).relative_to(item["restore_root"])
+            restore_to = str(target / relative)
+        else:
+            restore_to = item["restore_to"]
         restore_item(
             artifact_path=artifact_path,
             fmt=item["format"],

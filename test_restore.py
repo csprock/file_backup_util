@@ -149,6 +149,7 @@ class TestRestoreMain(unittest.TestCase):
             "format": None,
             "type": "file",
             "restore_to": str(original),
+            "restore_root": str(original),
         }])
         with patch("sys.argv", ["backup_util.py", "--restore", "--backup-dir",
                                 str(self.backup_dir), "--target", str(target)]):
@@ -164,14 +165,39 @@ class TestRestoreMain(unittest.TestCase):
         parent_b = self.root / "projects" / "b"
         target = self.root / "elsewhere"
         self._write_manifest([
-            {"artifact": "a.txt", "format": None, "type": "file", "restore_to": str(parent_a)},
-            {"artifact": "b.txt", "format": None, "type": "file", "restore_to": str(parent_b)},
+            {"artifact": "a.txt", "format": None, "type": "file",
+             "restore_to": str(parent_a), "restore_root": str(parent_a)},
+            {"artifact": "b.txt", "format": None, "type": "file",
+             "restore_to": str(parent_b), "restore_root": str(parent_b)},
         ])
         with patch("sys.argv", ["backup_util.py", "--restore", "--backup-dir",
                                 str(self.backup_dir), "--target", str(target)]):
             backup.main()
         self.assertEqual((target / "a.txt").read_text(), "from a")
         self.assertEqual((target / "b.txt").read_text(), "from b")
+
+    def test_target_preserves_relative_subtree_for_split_items(self):
+        # An item that was split off deep inside a large backed-up directory
+        # (restore_root is the top-level entry's parent, restore_to is the
+        # item's true, deeper original parent) should keep that intermediate
+        # structure under --target rather than landing flat.
+        (self.backup_dir / "deep.txt").write_text("nested")
+        top_level_parent = self.root / "home" / "user1"
+        deep_original_parent = top_level_parent / "Documents" / "subdirA" / "nested"
+        target = self.root / "elsewhere"
+        self._write_manifest([{
+            "artifact": "deep.txt",
+            "format": None,
+            "type": "file",
+            "restore_to": str(deep_original_parent),
+            "restore_root": str(top_level_parent),
+        }])
+        with patch("sys.argv", ["backup_util.py", "--restore", "--backup-dir",
+                                str(self.backup_dir), "--target", str(target)]):
+            backup.main()
+        self.assertEqual(
+            (target / "Documents" / "subdirA" / "nested" / "deep.txt").read_text(), "nested"
+        )
 
     def test_missing_artifact_raises(self):
         self._write_manifest([{
