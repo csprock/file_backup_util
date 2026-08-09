@@ -166,19 +166,26 @@ def _archive_tar(src, output_dir, exclude_hidden, logger):
 
 def make_archive_file(src, dest_dir, fmt, exclude_hidden, dry_run, logger, root=None):
     ext = ".tar.gz"
+    root = root if root is not None else src.parent
+    # Mirror src's position relative to root inside dest_dir, so archives
+    # split off from different branches (or different top-level entries)
+    # never collide even when they share a basename (e.g. two ".env" files).
+    rel_dir = src.parent.relative_to(root)
+    artifact_dir = dest_dir / rel_dir
     entry = {
-        "artifact": src.name + ext,
+        "artifact": str(rel_dir / (src.name + ext)),
         "format": fmt,
         "type": "file" if src.is_file() else "dir",
         "restore_to": str(src.parent),
-        "restore_root": str(root if root is not None else src.parent),
+        "restore_root": str(root),
     }
     if dry_run:
-        logger.info(f"[dry-run] would archive {src} → {dest_dir / (src.name + ext)}")
+        logger.info(f"[dry-run] would archive {src} → {artifact_dir / (src.name + ext)}")
         return entry
+    artifact_dir.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory() as tmp:
         archive = _archive_tar(src, tmp, exclude_hidden, logger)
-        dest = shutil.move(str(archive), str(dest_dir))
+        dest = shutil.move(str(archive), str(artifact_dir))
         logger.info(f"Moved archive to {dest}")
     return entry
 
