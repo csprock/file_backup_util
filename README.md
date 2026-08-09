@@ -9,6 +9,22 @@ manifest so restores are exact and repeatable.
 
 - Python 3 (standard library only — no third-party packages required)
 
+## Installation
+
+Clone the repo and run the install script:
+
+```bash
+git clone <repo-url>
+cd file_backup_util
+./install.sh
+```
+
+This symlinks `backup_util.py` to `~/.local/bin/backup_util`, so the
+`backup_util` command always runs the version checked out in this clone —
+no separate install step needed after pulling updates. Make sure
+`~/.local/bin` is on your `PATH` (the script warns if it isn't). Re-running
+`install.sh` is safe; it's a no-op if already installed.
+
 ## Usage
 
 The tool has two modes: `--backup` and `--restore`.
@@ -16,7 +32,7 @@ The tool has two modes: `--backup` and `--restore`.
 ### Backup
 
 ```bash
-python3 backup_util.py --backup --config backup.json --destination /mnt/external/backups
+backup_util --backup --config backup.json --destination /mnt/external/backups
 ```
 
 - `--config` (required): path to the JSON config file describing what to back up.
@@ -39,7 +55,7 @@ This manifest is required for `--restore`.
 ### Restore
 
 ```bash
-python3 backup_util.py --restore --backup-dir /mnt/external/backups_2026-06-16T10-30-00
+backup_util --restore --backup-dir /mnt/external/backups_2026-06-16T10-30-00
 ```
 
 - `--backup-dir` (required): the backup directory produced by a previous
