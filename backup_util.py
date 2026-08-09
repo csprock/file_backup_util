@@ -81,9 +81,9 @@ def parse_args():
     parser.add_argument("--backup-dir", help="Path to backup directory to restore from (--restore mode)")
     parser.add_argument(
         "--target",
-        help="Restore everything under this directory, recreating each item's "
-        "original path tree beneath it, instead of restoring to the original "
-        "locations (--restore mode)",
+        help="Restore everything under this directory using each item's own "
+        "top-level name, instead of restoring to its original location "
+        "(--restore mode)",
     )
     parser.add_argument("--dry-run", action="store_true")
     return parser.parse_args()
@@ -297,26 +297,20 @@ def run_restore(args, logger):
     with open(manifest_path) as f:
         manifest = json.load(f)
 
-    # With --target, every item is restored under that directory with its
-    # original path tree recreated beneath it (e.g. /home/u/Docs becomes
-    # <target>/home/u/Docs), instead of restoring to its original location.
+    # With --target, each item is restored directly under that directory
+    # using its own top-level name (e.g. a backed-up /home/u/Documents
+    # becomes <target>/Documents), instead of restoring to its original
+    # location.
     target = Path(args.target).resolve() if args.target else None
     if target:
-        logger.info(f"Rerooting all items under {target}")
+        logger.info(f"Restoring items under {target} instead of their original locations")
 
     for item in manifest["items"]:
         artifact_path = backup_dir / item["artifact"]
         if not artifact_path.exists():
             logger.error(f"Artifact not found: {artifact_path}")
             raise FileNotFoundError(artifact_path)
-        original = Path(item["restore_to"])
-        if target:
-            # Strip the leading "/" so the full original tree is recreated
-            # beneath target rather than restoring from the filesystem root.
-            parts = original.parts[1:] if original.anchor else original.parts
-            restore_to = str(target.joinpath(*parts))
-        else:
-            restore_to = str(original)
+        restore_to = str(target) if target else item["restore_to"]
         restore_item(
             artifact_path=artifact_path,
             fmt=item["format"],

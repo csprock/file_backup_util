@@ -140,7 +140,7 @@ class TestRestoreMain(unittest.TestCase):
             backup.main()
         self.assertTrue((self.restore_to / "file.txt").exists())
 
-    def test_target_reroots_original_tree_under_target(self):
+    def test_target_restores_directly_under_target(self):
         (self.backup_dir / "file.txt").write_text("hello")
         original = self.root / "original_location"
         target = self.root / "elsewhere"
@@ -153,13 +153,11 @@ class TestRestoreMain(unittest.TestCase):
         with patch("sys.argv", ["backup_util.py", "--restore", "--backup-dir",
                                 str(self.backup_dir), "--target", str(target)]):
             backup.main()
-        # The full original path is recreated under target (anchor stripped).
-        rerooted = target / original.relative_to(original.anchor)
-        self.assertTrue((rerooted / "file.txt").exists())
+        # The original parent path is discarded; the item lands directly under target.
+        self.assertTrue((target / "file.txt").exists())
         self.assertFalse(original.exists())
 
-    def test_target_keeps_same_named_items_distinct(self):
-        # Two items named "notes.txt" from different parents must not collide.
+    def test_target_places_each_item_directly_under_target(self):
         (self.backup_dir / "a.txt").write_text("from a")
         (self.backup_dir / "b.txt").write_text("from b")
         parent_a = self.root / "projects" / "a"
@@ -172,10 +170,8 @@ class TestRestoreMain(unittest.TestCase):
         with patch("sys.argv", ["backup_util.py", "--restore", "--backup-dir",
                                 str(self.backup_dir), "--target", str(target)]):
             backup.main()
-        a = target / parent_a.relative_to(parent_a.anchor) / "a.txt"
-        b = target / parent_b.relative_to(parent_b.anchor) / "b.txt"
-        self.assertEqual(a.read_text(), "from a")
-        self.assertEqual(b.read_text(), "from b")
+        self.assertEqual((target / "a.txt").read_text(), "from a")
+        self.assertEqual((target / "b.txt").read_text(), "from b")
 
     def test_missing_artifact_raises(self):
         self._write_manifest([{
